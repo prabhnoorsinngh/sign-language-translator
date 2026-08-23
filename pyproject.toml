@@ -1,0 +1,27 @@
+[tool.pyrefly]
+python-version = "3.11"
+python-platform = "Windows"
+python-interpreter = "C:/Users/kirta/AppData/Local/Programs/Python/Python311/python.exe"
+site-package-path = [
+    "C:/Users/kirta/AppData/Local/Programs/Python/Python311/Lib/site-packages"
+]
+search-paths = [
+    "python-training",
+    "C:/Users/kirta/AppData/Local/Programs/Python/Python311/Lib/site-packages",
+    "C:/Users/kirta/AppData/Local/Programs/Python/Python311/DLLs"
+]
+search-path = [
+    "python-training",
+    "C:/Users/kirta/AppData/Local/Programs/Python/Python311/Lib/site-packages",
+    "C:/Users/kirta/AppData/Local/Programs/Python/Python311/DLLs"
+]
+
+[tool.pyright]
+pythonVersion = "3.11"
+pythonPlatform = "Windows"
+venvPath = "."
+venv = ".venv"
+extraPaths = [
+    "python-training",
+    "C:/Users/kirta/AppData/Local/Programs/Python/Python311/Lib/site-packages"
+]
