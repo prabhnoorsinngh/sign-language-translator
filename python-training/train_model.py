@@ -18,6 +18,7 @@ import os
 import sys
 
 import joblib
+import numpy as np
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import classification_report, confusion_matrix
@@ -145,15 +146,51 @@ def drop_rare_classes(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # ---------------------------------------------------------------------------
-# Step 3 - Split into features (X) and labels (y)
+# Step 3 - Normalize coordinates (wrist-relative & scale-invariant)
+# ---------------------------------------------------------------------------
+def normalize_landmarks(X: np.ndarray) -> np.ndarray:
+    """
+    Normalizes hand landmarks to be position- and scale-invariant:
+      1. Translates all landmarks relative to the wrist (landmark 0),
+         so wrist becomes (0, 0, 0).
+      2. Scales all coordinates by the maximum Euclidean distance from
+         the wrist to any other landmark (with epsilon protection).
+    """
+    is_1d = X.ndim == 1
+    if is_1d:
+        X = X.reshape(1, -1)
+
+    n_samples = X.shape[0]
+    # Reshape (N, 63) -> (N, 21, 3)
+    coords = X.reshape(n_samples, 21, 3)
+
+    # Wrist is landmark 0
+    wrist = coords[:, 0:1, :]  # shape (N, 1, 3)
+    rel_coords = coords - wrist  # shape (N, 21, 3)
+
+    # Compute Euclidean distance from wrist for each of the 21 landmarks
+    dists = np.linalg.norm(rel_coords, axis=2)  # shape (N, 21)
+    max_d = np.max(dists, axis=1, keepdims=True)  # shape (N, 1)
+    max_d = np.where(max_d > 1e-6, max_d, 1.0)
+
+    # Scale coordinates
+    norm_coords = rel_coords / max_d[:, :, np.newaxis]
+    out = norm_coords.reshape(n_samples, 63)
+    return out[0] if is_1d else out
+
+
+# ---------------------------------------------------------------------------
+# Step 3b - Split into features (X) and labels (y)
 # ---------------------------------------------------------------------------
 def split_features_labels(df: pd.DataFrame):
     """
     The 'label' column is the target (y).
     All other columns are landmark coordinates (X).
+    Applies wrist-relative and scale normalization to X.
     """
     # Drop the label column to get the feature matrix
-    X = df.drop(columns=["label"]).values   # shape: (n_samples, 63)
+    X_raw = df.drop(columns=["label"]).values.astype("float32")  # shape: (n_samples, 63)
+    X = normalize_landmarks(X_raw)
     y = df["label"].values                  # shape: (n_samples,)
     return X, y
 

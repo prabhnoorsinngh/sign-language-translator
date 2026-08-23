@@ -7,12 +7,8 @@
  * 1. Load the exported Keras Sequential model from `model/model.json`.
  * 2. Load `model/labels.json` class mapping (28 classes: A-Z, del, space).
  * 3. Poll `getCurrentLandmarks()` from `landmarks.js` every ~200ms.
- * 4. Run inference using `tf.tidy()` to prevent GPU/WebGL memory leaks.
- * 5. Normalization note:
- *    As verified in `python-training/convert_to_tfjs.py` and `process_dataset.py`,
- *    the model was trained directly on raw MediaPipe normalized coordinates
- *    (x in [0, 1], y in [0, 1], z relative depth) without additional scaling.
- *    `getCurrentLandmarks()` outputs this exact 63-element feature vector.
+ * 4. Apply wrist-relative and scale normalization (matching python-training).
+ * 5. Run inference using `tf.tidy()` to prevent GPU/WebGL memory leaks.
  * 6. Expose `getCurrentPrediction()` returning `{ label, confidence }` or `null`.
  */
 
@@ -113,6 +109,51 @@
   }
 
   /**
+   * Normalizes hand landmarks to be wrist-relative and scale-invariant.
+   * Matches the exact Python implementation:
+   *   1. Subtract wrist (landmark 0) x, y, z from all 21 landmarks.
+   *   2. Divide all coordinates by the maximum Euclidean distance from the wrist to any landmark.
+   *
+   * @param {Float32Array|number[]} raw - 63 raw landmark coordinates [x0,y0,z0,...,x20,y20,z20]
+   * @returns {Float32Array} 63 normalized coordinates
+   */
+  function normalizeLandmarks(raw) {
+    if (!raw || raw.length !== 63) return raw;
+
+    const wristX = raw[0];
+    const wristY = raw[1];
+    const wristZ = raw[2];
+
+    const rel = new Float32Array(63);
+    let maxDist = 0;
+
+    // Step 1: Subtract wrist coordinates & find max Euclidean distance from wrist
+    for (let i = 0; i < 21; i++) {
+      const idx = i * 3;
+      const rx = raw[idx] - wristX;
+      const ry = raw[idx + 1] - wristY;
+      const rz = raw[idx + 2] - wristZ;
+
+      rel[idx] = rx;
+      rel[idx + 1] = ry;
+      rel[idx + 2] = rz;
+
+      const dist = Math.sqrt(rx * rx + ry * ry + rz * rz);
+      if (dist > maxDist) {
+        maxDist = dist;
+      }
+    }
+
+    // Step 2: Scale coordinates by max Euclidean distance from wrist
+    const scale = maxDist > 1e-6 ? maxDist : 1.0;
+    for (let j = 0; j < 63; j++) {
+      rel[j] /= scale;
+    }
+
+    return rel;
+  }
+
+  /**
    * Executes a single classification pass on the provided 63-element landmark vector.
    *
    * @param {Float32Array|number[]} landmarks - 63 landmark coordinates [x0,y0,z0,...,x20,y20,z20]
@@ -123,10 +164,13 @@
       return null;
     }
 
+    // Normalize coordinates to be wrist-relative and scale-invariant
+    const normalizedCoords = normalizeLandmarks(landmarks);
+
     // Wrap tensor operations in tf.tidy() to prevent memory leaks on mobile GPUs
     const probabilities = window.tf.tidy(() => {
       // Convert flat array to 2D tensor of shape [1, 63]
-      const inputTensor = window.tf.tensor2d([landmarks], [1, 63], 'float32');
+      const inputTensor = window.tf.tensor2d([normalizedCoords], [1, 63], 'float32');
       const outputTensor = model.predict(inputTensor);
       return outputTensor.dataSync(); // Synchronous array extract
     });

@@ -97,15 +97,48 @@ def load_dataset(dataset_dir: str) -> pd.DataFrame:
 
 
 # ===========================================================================
-# Step 2: Extract features & encode labels
+# Step 2: Extract features, normalize & encode labels
 # ===========================================================================
+def normalize_landmarks(X: np.ndarray) -> np.ndarray:
+    """
+    Normalizes hand landmarks to be position- and scale-invariant:
+      1. Translates all landmarks relative to the wrist (landmark 0),
+         so wrist becomes (0, 0, 0).
+      2. Scales all coordinates by the maximum Euclidean distance from
+         the wrist to any other landmark (with epsilon protection).
+    """
+    is_1d = X.ndim == 1
+    if is_1d:
+        X = X.reshape(1, -1)
+
+    n_samples = X.shape[0]
+    # Reshape (N, 63) -> (N, 21, 3)
+    coords = X.reshape(n_samples, 21, 3)
+
+    # Wrist is landmark 0
+    wrist = coords[:, 0:1, :]  # shape (N, 1, 3)
+    rel_coords = coords - wrist  # shape (N, 21, 3)
+
+    # Compute Euclidean distance from wrist for each of the 21 landmarks
+    dists = np.linalg.norm(rel_coords, axis=2)  # shape (N, 21)
+    max_d = np.max(dists, axis=1, keepdims=True)  # shape (N, 1)
+    max_d = np.where(max_d > 1e-6, max_d, 1.0)
+
+    # Scale coordinates
+    norm_coords = rel_coords / max_d[:, :, np.newaxis]
+    out = norm_coords.reshape(n_samples, 63)
+    return out[0] if is_1d else out
+
+
 def prepare_features_and_labels(df: pd.DataFrame):
     """
-    Separates 63 coordinate features from label strings.
-    Converts string classes into integer indices and one-hot vectors.
+    Separates 63 coordinate features from label strings, applies wrist-relative
+    and scale normalization to features, and converts string classes into
+    integer indices and one-hot vectors.
     """
     # 63 features: 21 landmarks x (x, y, z) coordinates
-    X = df.drop(columns=["label"]).values.astype("float32")
+    X_raw = df.drop(columns=["label"]).values.astype("float32")
+    X = normalize_landmarks(X_raw)
     y_raw = df["label"].values
 
     # Encode string names into 0..N-1 class indices
