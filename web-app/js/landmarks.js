@@ -10,6 +10,9 @@
  * 3. Render 21 hand landmarks and connection lines on the overlay canvas.
  * 4. Expose `getCurrentLandmarks()` returning a flat 63-element array [x0, y0, z0, ..., x20, y20, z20]
  *    for the primary detected hand (or null if no hands in frame).
+ * 5. Expose `getCurrentHandedness()` returning "Left", "Right", or null.
+ *    This is consumed by classifier.js to apply left-hand x-mirroring at
+ *    inference time (see classifier.js for WHY this is needed).
  */
 
 (function (window) {
@@ -17,6 +20,9 @@
 
   // Stores the latest detected 63-element landmark coordinates (or null when no hand)
   let latestLandmarks = null;
+
+  // Stores the handedness label ("Left" / "Right") of the primary detected hand, or null
+  let latestHandedness = null;
 
   // MediaPipe and canvas tracking state
   let hands = null;
@@ -71,9 +77,16 @@
 
   /**
    * Callback invoked whenever MediaPipe Hands finishes processing a frame.
-   * Clears canvas, renders hand skeleton overlay, and updates `latestLandmarks`.
+   * Clears canvas, renders hand skeleton overlay, and updates `latestLandmarks`
+   * and `latestHandedness`.
    *
-   * @param {Object} results - MediaPipe detection results containing `multiHandLandmarks`
+   * MediaPipe reports handedness from the CAMERA's perspective (mirrored relative
+   * to the user). A hand that appears on the right side of the screen is labelled
+   * "Left" by MediaPipe. We store the label as-is and let classifier.js handle
+   * the mirroring decision using this value.
+   *
+   * @param {Object} results - MediaPipe detection results containing
+   *   `multiHandLandmarks` and `multiHandedness`
    */
   function onHandResults(results) {
     if (!canvasCtx || !canvasElement) return;
@@ -83,6 +96,10 @@
     canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
 
     const detectedHands = results.multiHandLandmarks;
+
+    // MediaPipe provides per-hand handedness classifications in the same index
+    // order as multiHandLandmarks. Each entry is { label: "Left"|"Right", score: number }.
+    const handednessList = results.multiHandedness || [];
 
     if (detectedHands && detectedHands.length > 0) {
       // 1. Extract 63 flat coordinate features (x, y, z for all 21 landmarks) from the primary hand
@@ -99,7 +116,16 @@
 
       latestLandmarks = flatCoords;
 
-      // 2. Draw visual hand skeleton overlay on canvas
+      // 2. Record handedness of the primary (index 0) hand
+      // MediaPipe labels from the camera's perspective, not the user's.
+      // e.g. the user's right hand appears on the left side of a mirrored preview,
+      // so MediaPipe labels it "Left". classifier.js mirrors x-coords when it
+      // sees "Left" here to compensate for training-data right-hand bias.
+      latestHandedness = handednessList[0]
+        ? handednessList[0].label  // "Left" or "Right" (camera perspective)
+        : null;
+
+      // 3. Draw visual hand skeleton overlay on canvas
       for (let h = 0; h < detectedHands.length; h++) {
         const handLandmarks = detectedHands[h];
 
@@ -124,6 +150,7 @@
     } else {
       // No hands detected in current frame
       latestLandmarks = null;
+      latestHandedness = null;
     }
 
     canvasCtx.restore();
@@ -172,6 +199,7 @@
   function stopTracking() {
     isTracking = false;
     latestLandmarks = null;
+    latestHandedness = null;
     if (canvasCtx && canvasElement) {
       canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
     }
@@ -187,9 +215,25 @@
     return latestLandmarks;
   }
 
+  /**
+   * Returns the handedness label of the currently detected primary hand,
+   * as reported by MediaPipe from the CAMERA'S perspective.
+   *
+   * Possible values:
+   *   "Left"  - hand appears on LEFT side of camera frame (typically the user's RIGHT hand)
+   *   "Right" - hand appears on RIGHT side of camera frame (typically the user's LEFT hand)
+   *   null    - no hand currently detected
+   *
+   * @returns {"Left"|"Right"|null}
+   */
+  function getCurrentHandedness() {
+    return latestHandedness;
+  }
+
   // Export functions to global scope
   window.initLandmarks = initLandmarks;
   window.startLandmarksTracking = startTracking;
   window.stopLandmarksTracking = stopTracking;
   window.getCurrentLandmarks = getCurrentLandmarks;
+  window.getCurrentHandedness = getCurrentHandedness;
 })(window);

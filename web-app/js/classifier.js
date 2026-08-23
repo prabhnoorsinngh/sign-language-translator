@@ -6,10 +6,12 @@
  * Responsibilities:
  * 1. Load the exported Keras Sequential model from `model/model.json`.
  * 2. Load `model/labels.json` class mapping (28 classes: A-Z, del, space).
- * 3. Poll `getCurrentLandmarks()` from `landmarks.js` every ~200ms.
- * 4. Apply wrist-relative and scale normalization (matching python-training).
- * 5. Run inference using `tf.tidy()` to prevent GPU/WebGL memory leaks.
- * 6. Expose `getCurrentPrediction()` returning `{ label, confidence }` or `null`.
+ * 3. Poll `getCurrentLandmarks()` and `getCurrentHandedness()` from `landmarks.js` every ~200ms.
+ * 4. If the detected hand is "Left" (camera perspective), mirror x-coordinates so the
+ *    gesture matches the right-hand training data distribution. See mirrorLandmarksIfLeft().
+ * 5. Apply wrist-relative and scale normalization (matching python-training).
+ * 6. Run inference using `tf.tidy()` to prevent GPU/WebGL memory leaks.
+ * 7. Expose `getCurrentPrediction()` returning `{ label, confidence, handedness }` or `null`.
  */
 
 (function (window) {
@@ -109,6 +111,33 @@
   }
 
   /**
+   * Mirrors the x-coordinate of all 21 landmarks by computing (1 - x).
+   *
+   * WHY THIS IS NEEDED — Training data bias:
+   *   The Kaggle ASL Alphabet dataset was captured almost exclusively with right hands.
+   *   The model therefore learned sign shapes as they appear for a right-handed signer.
+   *   For a left-handed user the hand shape appears as a horizontal mirror image, so
+   *   without correction every letter would be systematically misclassified.
+   *
+   *   MediaPipe reports handedness from the CAMERA's perspective (not the user's).
+   *   A hand the USER sees as their right hand is on the LEFT of the camera frame,
+   *   so MediaPipe labels it "Left". We therefore mirror when MediaPipe says "Left".
+   *
+   *   Mirroring is applied BEFORE wrist-relative normalization so the downstream
+   *   math sees geometrically equivalent right-hand coordinates.
+   *
+   * @param {Float32Array} raw - 63 raw landmark coordinates
+   * @returns {Float32Array} x-mirrored copy
+   */
+  function mirrorLandmarksIfLeft(raw) {
+    const mirrored = new Float32Array(raw);
+    for (let i = 0; i < 21; i++) {
+      mirrored[i * 3] = 1.0 - raw[i * 3]; // x_new = 1 - x_old; y and z unchanged
+    }
+    return mirrored;
+  }
+
+  /**
    * Normalizes hand landmarks to be wrist-relative and scale-invariant.
    * Matches the exact Python implementation:
    *   1. Subtract wrist (landmark 0) x, y, z from all 21 landmarks.
@@ -204,6 +233,7 @@
       if (!isModelReady || typeof window.getCurrentLandmarks !== 'function') {
         latestPrediction = null;
         notifyListeners(null);
+        updateHandednessBadge(null);
         return;
       }
 
@@ -211,10 +241,26 @@
       if (!landmarks) {
         latestPrediction = null;
         notifyListeners(null);
+        updateHandednessBadge(null);
         return;
       }
 
-      const result = predictSign(landmarks);
+      // Retrieve MediaPipe handedness (camera perspective: "Left" or "Right")
+      const handedness = typeof window.getCurrentHandedness === 'function'
+        ? window.getCurrentHandedness()
+        : null;
+
+      // Apply left-hand mirroring if needed (see mirrorLandmarksIfLeft for full rationale)
+      const processedLandmarks = handedness === 'Left'
+        ? mirrorLandmarksIfLeft(landmarks)
+        : landmarks;
+
+      // Update the on-screen handedness badge for debugging / demo transparency
+      updateHandednessBadge(handedness);
+
+      const result = predictSign(processedLandmarks);
+      // Attach handedness to the prediction result so consumers can read it
+      if (result) result.handedness = handedness;
       latestPrediction = result;
       notifyListeners(result);
     }, INFERENCE_INTERVAL_MS);
@@ -259,9 +305,35 @@
   }
 
   /**
+   * Updates the on-screen handedness badge element with the current hand label.
+   * Renders "Right Hand" or "Left Hand" with distinct styling for demo clarity.
+   * Hides the badge when no hand is detected.
+   *
+   * @param {"Left"|"Right"|null} handedness
+   */
+  function updateHandednessBadge(handedness) {
+    const badge = document.getElementById('handednessBadge');
+    if (!badge) return;
+
+    if (!handedness) {
+      badge.textContent = '';
+      badge.className = 'handedness-badge hidden';
+      return;
+    }
+
+    // MediaPipe "Left" from camera perspective = user's right hand (and vice versa).
+    // We display from the USER's perspective for intuitive feedback.
+    const userLabel = handedness === 'Left' ? 'Right Hand' : 'Left Hand';
+    const isMirrored = handedness === 'Left'; // left-hand mirroring was applied
+
+    badge.textContent = userLabel + (isMirrored ? ' (mirrored)' : '');
+    badge.className = 'handedness-badge ' + (isMirrored ? 'badge-left' : 'badge-right');
+  }
+
+  /**
    * Returns the latest predicted sign and confidence score.
    *
-   * @returns {{ label: string, confidence: number }|null}
+   * @returns {{ label: string, confidence: number, handedness: string|null }|null}
    */
   function getCurrentPrediction() {
     return latestPrediction;
