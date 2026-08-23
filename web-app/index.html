@@ -85,6 +85,68 @@
         </div>
       </div>
 
+      <!-- Live Sentence Builder & Caption Card -->
+      <div class="caption-card">
+        <div class="caption-header">
+          <div class="caption-title-group">
+            <span class="caption-badge-dot"></span>
+            <span class="caption-title">Live Translated Captions</span>
+          </div>
+          <div id="holdStabilityStatus" class="stability-pill">
+            <span id="stabilityText">Hold sign to lock</span>
+            <div class="stability-bar-track">
+              <div id="stabilityBarFill" class="stability-bar-fill"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Large Caption Text Display -->
+        <div class="caption-display-box" id="captionDisplayBox">
+          <p id="sentenceText" class="sentence-text empty">Begin signing to generate captions...</p>
+          <span class="typing-cursor"></span>
+        </div>
+
+        <!-- Caption Control Toolbar -->
+        <div class="caption-toolbar">
+          <div class="toolbar-left">
+            <button id="clearSentenceBtn" class="tool-btn danger" title="Clear All (Reset)">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2M10 11v6M14 11v6"/>
+              </svg>
+              <span>Clear</span>
+            </button>
+            <button id="backspaceBtn" class="tool-btn" title="Backspace (Delete Last Character)">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 4H8l-7 8 7 8h13a2 2 0 002-2V6a2 2 0 00-2-2zM18 9l-6 6M12 9l6 6"/>
+              </svg>
+              <span>Backspace</span>
+            </button>
+            <button id="addSpaceBtn" class="tool-btn" title="Add Space">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M4 14v2h16v-2"/>
+              </svg>
+              <span>Space</span>
+            </button>
+          </div>
+          <div class="toolbar-right">
+            <button id="speakSentenceBtn" class="tool-btn accent" title="Speak Aloud in English (TTS)">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+                <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/>
+              </svg>
+              <span id="speakBtnLabel">Speak</span>
+            </button>
+            <button id="copySentenceBtn" class="tool-btn primary" title="Copy Text">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
+              </svg>
+              <span id="copyBtnLabel">Copy</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
       <!-- Live Info Panel -->
       <div class="info-card">
         <div class="info-row">
@@ -104,7 +166,7 @@
 
     <!-- Footer -->
     <footer class="app-footer">
-      <span>Checkpoint 3: Live Gesture Classification (TensorFlow.js)</span>
+      <span>Complete Sign Translator: Camera + AI Gestures + Captions + Voice</span>
     </footer>
   </div>
 
@@ -120,6 +182,8 @@
   <script src="js/camera.js"></script>
   <script src="js/landmarks.js"></script>
   <script src="js/classifier.js"></script>
+  <script src="js/sentenceBuilder.js"></script>
+  <script src="js/speech.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
